@@ -160,10 +160,14 @@
   /* =====================================================================
    * 以下為昶勝軍版畫面（115/10/06）：計算函式 compute() 與骨折圖邏輯沿用原工具，未更動。
    * 新增：職業類別不可投保（費率「–」）提示、客戶頁連結（#q=）、下載保障彙整圖、草稿自動儲存。
+   * 115/10/06 ac2：業務員姓名／職級／電話改由使用者填寫（AgentProfile，與旅平險工具共用 localStorage），隨客戶頁連結帶出。
    * ===================================================================== */
   var STORE_KEY = "yt-acc-quote-draft-v1";
   var STATE_KEYS = Object.keys(R.DEFAULTS);
-  var AGENT = { team: "昶勝軍", name: "蔡亞霖", title: "主任", org: "富邦人壽 高秉通訊處", phone: "0963-218-888" };
+  var AP = window.AgentProfile;
+  /** 客戶頁連結帶來的業務員資料（舊連結沒有 → null，只顯示「昶勝軍」） */
+  var linkAgent = null;
+  function currentAgent() { return clientMode ? (linkAgent || AP.sanitize({})) : AP.load(); }
   var ASSET_V = (function () {
     var s = document.querySelector('script[src*="app.js"]');
     var m = s && /[?&]v=([^&]+)/.exec(s.getAttribute("src"));
@@ -308,11 +312,12 @@
   }
 
   function footerHtml() {
+    var a = currentAgent();
     return '<div class="sig-wrap"><img class="sig-logo" src="' + LOGO + '" alt="昶勝軍" width="88" height="88">' +
       '<div class="sig-text"><div class="sig-kicker">您的專屬保險顧問</div>' +
-      '<div class="sig-name">' + esc(AGENT.team + " " + AGENT.name + AGENT.title) + "</div>" +
-      '<div class="sig-unit">' + esc(AGENT.org) + "</div></div>" +
-      '<a class="sig-phone" href="tel:' + AGENT.phone.replace(/\D/g, "") + '">☎ ' + esc(AGENT.phone) + "</a></div>" +
+      '<div class="sig-name">' + esc(AP.line(a)) + "</div>" +
+      '<div class="sig-unit">' + esc(AP.ORG) + "</div></div>" +
+      (AP.telDigits(a.phone) ? '<a class="sig-phone" href="' + esc(AP.telHref(a.phone)) + '">☎ ' + esc(a.phone) + "</a>" : "") + "</div>" +
       '<div class="sig-disc">以上保費為試算結果，實際以富邦人壽核保為準；保障內容以保單條款為準。</div>';
   }
 
@@ -355,6 +360,7 @@
     $("quoteCard").innerHTML = quoteHtml(c, v.s);
     renderChart(c);
     renderCallout(c);
+    $("sigFooter").innerHTML = footerHtml();
     if (!clientMode) saveDraft();
   }
 
@@ -390,12 +396,25 @@
   }
   function shareUrl() {
     var u = new URL(location.href); u.search = ""; u.hash = "";
-    return u.href + "#q=" + b64urlEncode(JSON.stringify(state));
+    var payload = Object.assign({}, state, { agent: AP.sanitize(AP.load()) }); // 連結帶業務員資料，客戶看到正確的人
+    return u.href + "#q=" + b64urlEncode(JSON.stringify(payload));
   }
   function stateFromHash() {
     var m = /[#&]q=([^&]+)/.exec(location.hash || "");
     if (!m) return null;
-    try { return pickState(JSON.parse(b64urlDecode(m[1]))); } catch (e) { return null; }
+    try {
+      var o = JSON.parse(b64urlDecode(m[1]));
+      linkAgent = (o && o.agent && typeof o.agent === "object") ? AP.sanitize(o.agent) : null;
+      return pickState(o);
+    } catch (e) { return null; }
+  }
+  /** 送出（下載圖／連結）前提醒：業務員資料未填或仍是範例 */
+  function agentReminder() {
+    var a = AP.load(), m = AP.missing(a), smp = AP.isSample(a);
+    if (!m.length && !smp) return "";
+    var card = $("agentCard");
+    if (card) { card.classList.add("flash"); setTimeout(function () { card.classList.remove("flash"); }, 1600); }
+    return smp ? "⚠ 業務員資料仍是範例（" + AP.SAMPLE.name + "）" : "⚠ 尚未填寫業務員" + m.join("、") + "，客戶只會看到「昶勝軍」";
   }
   function toast(msg) {
     var t = document.createElement("div"); t.className = "toast"; t.textContent = msg;
@@ -660,15 +679,15 @@
     $("admDaily").max = String(RULES.adm.max); $("admDaily").step = String(RULES.adm.step);
     $("adhAmount").step = String(RULES.adh.step);
     $("hospitalDays").max = String(RULES.maxHospitalDays);
-    $("sigFooter").innerHTML = footerHtml();
-
     // 載入順序：網址 #q=（客戶頁）→ 草稿 → 預設
     var fromHash = stateFromHash();
     if (fromHash) {
       state = fromHash; clientMode = true;
       document.body.classList.add("is-client");
-      document.title = (state.name ? state.name + " 的" : "") + "意外險保障試算｜昶勝軍 蔡亞霖主任";
+      document.title = (state.name ? state.name + " 的" : "") + "意外險保障試算｜" + AP.line(currentAgent());
     } else {
+      AP.bind({ name: $("agentName"), title: $("agentTitle"), phone: $("agentPhone"), list: $("agentTitleList"),
+        sample: $("agentSample"), status: $("agentStatus"), card: $("agentCard"), onChange: function () { render(); } });
       try { var raw = localStorage.getItem(STORE_KEY); if (raw) state = pickState(JSON.parse(raw)); } catch (e) {}
     }
 
@@ -694,17 +713,18 @@
 
     $("btnPng").addEventListener("click", function () {
       var b = $("btnPng"); b.disabled = true; b.textContent = "產生中…";
-      downloadPng().then(function (n) { if (n) toast("已下載 " + n); })
+      var remind = agentReminder();
+      downloadPng().then(function (n) { if (n) toast(remind ? remind + "（已下載 " + n + "）" : "已下載 " + n); })
         .catch(function (err) { alert("產生圖片失敗：" + (err && err.message ? err.message : err)); })
         .finally(function () { b.disabled = false; b.textContent = "🖼 下載保障彙整圖"; });
     });
     $("btnCopyLink").addEventListener("click", function () {
-      var url = shareUrl();
+      var url = shareUrl(), remind = agentReminder();
       copyText(url).then(function () {
-        toast(/^file:/.test(location.href) ? "已複製（本機檔案連結僅供自己預覽；上線後的連結才能傳給客戶）" : "已複製客戶頁連結，可貼到 LINE");
+        toast(remind ? remind + "（連結已複製）" : /^file:/.test(location.href) ? "已複製（本機檔案連結僅供自己預覽；上線後的連結才能傳給客戶）" : "已複製客戶頁連結，可貼到 LINE");
       }).catch(function () { prompt("請複製以下連結：", url); });
     });
-    $("btnOpenClient").addEventListener("click", function () { window.open(shareUrl(), "_blank"); });
+    $("btnOpenClient").addEventListener("click", function () { var r = agentReminder(); if (r) toast(r); window.open(shareUrl(), "_blank"); });
     $("btnReset").addEventListener("click", function () {
       if (!confirm("恢復預設示範資料？（目前輸入會被覆蓋）")) return;
       state = JSON.parse(JSON.stringify(R.DEFAULTS)); chartView.mode = "bone"; render(); toast("已恢復預設");
@@ -730,7 +750,7 @@
   // 對外提供計算函式（測試或日後擴充用；compute 與原工具相同）
   window.QuoteCalc = { parseRocBirth: parseRocBirth, compute: compute, computeView: computeView, getState: function () { return state; },
     setState: function (o) { state = pickState(Object.assign({}, state, o)); render(); return computeView(state).c; },
-    shareUrl: shareUrl, downloadPng: downloadPng,
+    shareUrl: shareUrl, downloadPng: downloadPng, getAgent: function () { return currentAgent(); },
     getChartView: function () { return { mode: chartView.mode, jointId: chartView.jointId }; } };
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

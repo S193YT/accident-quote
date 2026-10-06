@@ -38,7 +38,7 @@
 .acc-input label.check { flex-direction: row; align-items: flex-start; gap: 8px; color: var(--ink); font-size: 14.5px; margin: 4px 0 8px; }
 .acc-input label.check.sub { font-size: 13.5px; color: var(--amber); background: var(--amber-bg); padding: 6px 8px; border-radius: 8px; }
 .acc-input label.check input { margin-top: 3px; accent-color: var(--teal-d); width: 18px; height: 18px; flex: none; }
-.acc-input input[type=text], .acc-input input[type=number], .acc-input select {
+.acc-input input[type=text], .acc-input input[type=tel], .acc-input input[type=number], .acc-input select {
   font: inherit; font-size: 16px; color: var(--ink); padding: 8px 10px; border: 1px solid #cfe3e6; border-radius: 9px; background: #fff; width: 100%;
 }
 .acc-input input:focus, .acc-input select:focus { outline: 2px solid var(--gold); border-color: var(--gold); }
@@ -261,3 +261,18 @@ body.is-client .acc-top { position: static; }
 @media (max-width: 759px) {
   .acc-top { position: static; }
 }
+
+/* ===== 業務員資料（ac2：與旅平險工具共用 localStorage） ===== */
+.agent-card { border: 2px solid var(--gold); background: linear-gradient(180deg, #fffaf0 0%, #fff 60%); }
+.agent-card.is-missing { border-color: #d9534f; box-shadow: 0 0 0 3px rgba(217, 83, 79, .12); }
+.agent-card.flash { animation: agentFlash .8s ease 2; }
+@keyframes agentFlash { 50% { box-shadow: 0 0 0 6px rgba(217, 83, 79, .35); } }
+.agent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+.agent-grid .agent-phone { grid-column: 1 / -1; }
+.agent-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.agent-unit { font-size: 12.5px; color: var(--muted); }
+.btn-sm { font-size: 13px; padding: 4px 10px; border-radius: 8px; }
+.agent-status { margin: 8px 0 0; padding: 7px 10px; border-radius: 8px; font-size: 14px; font-weight: 700; }
+.agent-status.err { background: #fdecea; color: var(--danger); }
+.agent-status.warn { background: #fff4e0; color: #9a5b00; }
+.agent-status.ok { background: #eaf6ee; color: #2a6b3f; }
